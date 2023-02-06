@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: syncgateway
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sgw-config
+  namespace: syncgateway
+type: Opaque
+stringData:
+  sgw-config.json: |-
+    {
+      "logging": {
+        "log_file_path": "/var/tmp/sglogs",
+        "console": {
+          "enabled": true,
+          "log_level": "info",
+          "log_keys": ["*"]
+        }
+      },
+      "databases": {
+        "db": {
+          "server": "couchbase://1.2.3.4", 
+          "bucket": "bucket",
+          "username": "Administrator", 
+          "password": "password",
+          "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } },
+          "allow_conflicts": false,
+          "revs_limit": 20,
+          "enable_shared_bucket_access": true,
+          "num_index_replicas": 0
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sync-gateway
+  namespace: syncgateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sync-gateway
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 50%
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: sync-gateway
+    spec:
+      containers:
+        - name: sync-gateway
+          image: couchbase/sync-gateway:2.8.3-enterprise
+          args: ["/sync-gateway-config/sgw-config.json"]
+          volumeMounts:
+            - name: sgw-config-volume
+              mountPath: /sync-gateway-config
+              readOnly: true
+          env:
+            - name: GOMAXPROCS
+              value: "2"
+      volumes:
+        - name: sgw-config-volume
+          secret:
+            secretName: sgw-config
